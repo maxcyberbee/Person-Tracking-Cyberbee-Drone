@@ -1,15 +1,4 @@
-# Person-Tracking-Tello-Drone
-Python script for using a Tello drone to track and follow a person. The Tello sends video to your computer, which detects key points of your body. It then sends motion commands, determined through basic PID control, back to the drone in order to keep you well in the frame.
-
-**The code currently works decently (as shown below) but the PID definitely can still be refined. I am also working on adding more tracking behaviors (for example, detecting when you turn and in what direction so that the drone can match left/right/movement better).**
-
-## Video Example
-https://drive.google.com/open?id=1hOpBfh_ndfvcmPzP6HPN33_v3nrxgVW9
-![Image](https://drive.google.com/uc?export=view&id=1JmJF5Z2ZtPx9VWAVNK3aq-sYqAxyrvst)
-
 ## Requirements/Setup
-### [TelloPy](https://github.com/hanyazou/TelloPy):
-Allows you to easily send commands and receive video from the drone. Can be easily installed running `pip install tellopy`.
 
 ### [OpenCV-Python](https://pypi.org/project/opencv-python/):
 `pip install opencv-contrib-python` If you receive an error related to Qt binaries that prevents the script from running, try installing the headless version instead with `pip install opencv-contrib-python-headless`. If you are still getting errors, also try the main version instead of contrib.
