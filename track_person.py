@@ -48,16 +48,17 @@ drone_cc = 0 # rotation command
 drone_ud = 0 # up/down command
 drone_fb = 0 # forward/backward command
 out = cv2.VideoWriter('outpy.avi', cv2.VideoWriter_fourcc(
-    'M', 'J', 'P', 'G'), 20, (1280, 960))
+    'M', 'J', 'P', 'G'), 20, (1280, 720))
 start_hand_landing = False # true when gesture recognized
 ready_to_land = False # true when size of body match the requested
 desiredHeight = 70  # number of pixel for size of body in frame (distance control)
-landing_height = 120 # number of pixel for size of body in frame for landing in hand  (distance control)
+landing_height = 130 # number of pixel for size of body in frame for landing in hand  (distance control)
 landing_timeout = 0
 up_count = 0 # number of up gestures recognized
 take_of_from_gesture_count = 5
 last_up_time_mili = 0
 gesture_take_off = False
+last_locked_position = [0,0]
 
 def controller_thread():
     global drone
@@ -65,7 +66,7 @@ def controller_thread():
     global drone_ud
     global drone_fb
     global shutdown
-
+    global gesture_take_off
     # initialize previous drone control inputs
     control_on = True  # allows you to toggle control so that you can force landing
     pdrone_cc = -111
@@ -76,7 +77,7 @@ def controller_thread():
     print('start controller_thread()')
     try:
         while run_controller_thread:
-            time.sleep(.05)
+            time.sleep(.02)
             # takeoff
             if keyboard.is_pressed('space'):
                 drone.takeoff()
@@ -111,26 +112,27 @@ def controller_thread():
             # set commands based on PID output
             if control_on and (pdrone_cc != drone_cc):
                 if drone_cc < 0:
-                    drone.clockwise(min([5,int(drone_cc)])*-1)
+                    drone.clockwise(min([20,(int(drone_cc)*-1)]))
                 else:
-                    drone.counter_clockwise(min([5,int(drone_cc)]))
+                    drone.counter_clockwise(min([20,int(drone_cc)]))
                 pdrone_cc = drone_cc
             if control_on and (pdrone_ud != drone_ud):
                 if drone_ud < 0:
                     # easily moving downwards requires control output to be magnified
-                    drone.down(min([100, int(drone_ud)*-2]))
+                    drone.down(min([100, (int(drone_ud)*-2)]))
                 else:
                     drone.up(min([200,int(drone_ud)]))
                 pdrone_ud = drone_ud
             if control_on and (pdrone_fb != drone_fb):
                 if drone_fb < 0:
                     # easily moving backwards requires control output to be magnified
-                    drone.backward(min([50, int(drone_fb)*-1]))
+                    drone.backward(min([40, (int(drone_fb)*-1)]))
                 else:
-                    drone.forward(min([50, int(drone_fb)]))
+                    drone.forward(min([30, int(drone_fb)]))
                 pdrone_fb = drone_fb
                 
             if(gesture_take_off):
+                gesture_take_off = False
                 drone.takeoff()
             if(ready_to_land):
                 drone.land()
@@ -241,7 +243,8 @@ def main():
     global gesture_id
     global battery_status
     global ready_to_land
-
+    global last_locked_position
+    global last_body_height
     args_gest = get_args()
     gesture_detector = GestureRecognition(args_gest.use_static_image_mode, args_gest.min_detection_confidence,
                                           args_gest.min_tracking_confidence)
@@ -260,9 +263,9 @@ def main():
     drone.start_video()
 
     drone.subscribe(drone.EVENT_FLIGHT_DATA, handler)
-    pid_cc = PID(0.35, 0.2, 0.2, setpoint=0, output_limits=(-100, 100))
-    pid_ud = PID(0.3, 0.3, 0.3, setpoint=0, output_limits=(-80, 80))
-    pid_fb = PID(0.35, 0.2, 0.3, setpoint=0, output_limits=(-50, 50))
+    pid_cc = PID(0.40, 0.12, 0.2, setpoint=0, output_limits=(-100, 100))
+    pid_ud = PID(0.3, 0.05, 0.15, setpoint=0, output_limits=(-80, 80))
+    pid_fb = PID(0.4, 0.10, 0.25, setpoint=0, output_limits=(-50, 50))
 
     video = cv2.VideoWriter('test_out.mp4', -1, 1, (320, 240))
     # drone.subscribe(drone.EVENT_VIDEO_FRAME,handler)
@@ -316,81 +319,99 @@ def main():
 
                         ctrl_out_cc = 0
                         ctrl_out_ud = 0
-                        leftSholy_y = int(keypoint_coords[0, 5, 0])
-                        rightSholy_y = int(keypoint_coords[0, 6, 0])
-                        leftHipy_y = int(keypoint_coords[0, 11, 0])
-                        rightHipy_y = int(keypoint_coords[0, 12, 0])
-                        
-                        #print("leftSholy",leftSholy,"rightSholy",rightSholy,"leftHipy",leftHipy,"rightHipy",rightHipy)
-                        # technically arbitrary
-                        meanHeight = int(((rightHipy_y - rightSholy_y) +
-                                      (leftHipy_y - leftSholy_y))/2)
-                        leftSholy_x = int(keypoint_coords[0, 5, 1])
-                        rightSholy_x = int(keypoint_coords[0, 6, 1])
-                        leftHipy_x = int(keypoint_coords[0, 11, 1])
-                        rightHipy_x = int(keypoint_coords[0, 12, 1])
-                        
-                        #print("leftSholy",leftSholy,"rightSholy",rightSholy,"leftHipy",leftHipy,"rightHipy",rightHipy)
-                        # technically arbitrary
-                        meanWidth = int(((rightHipy_x - leftHipy_x ) +
-                                      (rightSholy_x - leftSholy_x))/2)
-                        # print("x: ",keypoint_coords[0,:,1])
-                        # print("y: ",keypoint_coords[0,:,0])
-                        # print("meanHeight", meanHeight)
-                        # print("meanWidth", meanWidth)
-                        
-                        if(start_hand_landing):
-                            if(meanHeight >= landing_height):
-                                ready_to_land = True
-                            
-                        
-                        center_body_x = int(leftSholy_x+(meanWidth/2))
-                        centerr_body_y = int(leftSholy_y+(meanHeight/2))
-                        
+                       
                         ctrl_out_fb = 0
 
                         errorFB = 0
                         #overlay_image = cv2.putText(overlay_image, str(nosey), (120,50), cv2.FONT_HERSHEY_SIMPLEX ,   1, (55,255,45), 2)
                         errorx = 0
                         errory = 0
-                        if keypoint_scores[0, 5] > .04 and keypoint_scores[0, 6] > .04 and keypoint_scores[0, 11] > .04 and keypoint_scores[0, 12] > .04:
+                        if keypoint_scores[0, 5] > .03 and keypoint_scores[0, 6] > .03 and keypoint_scores[0, 11] > .03 and keypoint_scores[0, 12] > .03:
+                            
+                            leftSholy_y = int(keypoint_coords[0, 5, 0])
+                            rightSholy_y = int(keypoint_coords[0, 6, 0])
+                            leftHipy_y = int(keypoint_coords[0, 11, 0])
+                            rightHipy_y = int(keypoint_coords[0, 12, 0])
+                            
+                            #print("leftSholy",leftSholy,"rightSholy",rightSholy,"leftHipy",leftHipy,"rightHipy",rightHipy)
+                            # technically arbitrary
+                            meanHeight = int(((rightHipy_y - rightSholy_y) +
+                                        (leftHipy_y - leftSholy_y))/2)
+                            leftSholy_x = int(keypoint_coords[0, 5, 1])
+                            rightSholy_x = int(keypoint_coords[0, 6, 1])
+                            leftHipy_x = int(keypoint_coords[0, 11, 1])
+                            rightHipy_x = int(keypoint_coords[0, 12, 1])
+                            
+                            # technically arbitrary
+                            meanWidth = int(((rightHipy_x - leftHipy_x ) +
+                                        (rightSholy_x - leftSholy_x))/2)
+                            # print("x: ",keypoint_coords[0,:,1])
+                            # print("y: ",keypoint_coords[0,:,0])
+                            print("meanHeight", meanHeight)
+                            # print("meanWidth", meanWidth)
+                            
+                            if(start_hand_landing):
+                                if(meanHeight >= landing_height):
+                                    ready_to_land = True
+                                
+                            
+                            center_body_x = int(leftSholy_x+(meanWidth/2))
+                            center_body_y = int(leftSholy_y+(meanHeight/2))
+                            last_locked_position = [center_body_x,center_body_y]
+                            last_body_height = meanHeight
+                            
                             overlay_image = cv2.line(
-                                overlay_image, (centerx, centery - 10), (center_body_x, centerr_body_y), (255, 255, 0), 2)
+                                overlay_image, (centerx, centery - 10), (center_body_x, center_body_y), (255, 255, 0), 2)
                             errorx = center_body_x - centerx
-                            errory = centerr_body_y - centery - 10
-                            if abs(errorx) > 20:
+                            errory = center_body_y - centery - 10
+                            if abs(errorx) > 2:
                                 ctrl_out_cc = pid_cc(errorx)
                                 drone_cc = ctrl_out_cc
                             else:
                                 drone_cc = 0
-                            if abs(errory) > 16:
+                            if abs(errory) > 4:
                                 ctrl_out_ud = pid_ud(errory)
                                 drone_ud = ctrl_out_ud
                             else:
                                 drone_ud = 0
-
-                            #out_img = cv2.putText(out_img, str(keypoint_scores[ii,kpoint]), (50,50), cv2.FONT_HERSHEY_SIMPLEX ,   1, (255,255,45), 2)
-                        else:
-                            # reset pid
-                            drone_cc = 0
-                            drone_ud = 0
-                            pid_cc.reset()
-                            pid_ud.reset()
-
-                  
-                        if keypoint_scores[0, 5] > .04 and keypoint_scores[0, 6] > .04 and keypoint_scores[0, 11] > .04 and keypoint_scores[0, 12] > .04:
                             errorFB = meanHeight - desiredHeight
                             # error can be within +/- 15 without caring
-                            if abs(errorFB) > 15:
+                            if abs(errorFB) > 5:
                                 ctrl_out_fb = pid_cc(errorFB)
                                 drone_fb = ctrl_out_fb
                             else:
                                 drone_fb = 0
+
                             #out_img = cv2.putText(out_img, str(keypoint_scores[ii,kpoint]), (50,50), cv2.FONT_HERSHEY_SIMPLEX ,   1, (255,255,45), 2)
                         else:
-                            # reset pid
+                            drone_cc = 0
+                            drone_ud = 0
                             drone_fb = 0
                             pid_fb.reset()
+                            pid_cc.reset()
+                            pid_ud.reset()
+                            # reset pid
+                            if(desiredHeight*2 < last_body_height):
+                                ctrl_out_fb = pid_cc(-20)
+                                drone_fb = ctrl_out_fb
+                            elif (desiredHeight/2 > last_body_height):
+                                ctrl_out_fb = pid_cc(20)
+                                drone_fb = ctrl_out_fb
+                            if(240<last_locked_position[0]):
+                                ctrl_out_cc = pid_cc(-20)
+                                drone_cc = ctrl_out_cc
+                            elif(80>last_locked_position[0]):
+                                ctrl_out_cc = pid_cc(20)
+                                drone_cc = ctrl_out_cc
+                            if(180<last_locked_position[1]):
+                                ctrl_out_ud = pid_ud(-20)
+                                drone_ud = ctrl_out_ud
+                            elif(60>last_locked_position[1]):
+                                ctrl_out_ud = pid_ud(20)
+                                drone_ud = ctrl_out_ud
+
+                  
+                        print("drone_cc ",drone_cc,"drone_ud ",drone_ud,"drone_fb ",drone_fb)
 
                         # don't let the hips lie
                         # if keypoint_scores[0,11] < .04 and keypoint_scores[0,12] < .04:
@@ -416,6 +437,7 @@ def main():
                         video.write(overlay_image)
                         #cv2.imshow('Original', image)
                         #cv2.imshow('Canny', cv2.Canny(image, 100, 200))
+                        
                         cv2.waitKey(1)
         except KeyboardInterrupt as e:
             print(e)
