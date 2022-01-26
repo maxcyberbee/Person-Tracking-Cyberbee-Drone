@@ -27,6 +27,24 @@ import tensorflow.compat.v1 as tf
 tf.disable_v2_behavior()
 
 
+def ShowVideos(frame, overlay_image, gesture_detector, number, mode, video):
+    
+    im = numpy.array(frame.to_image())
+    im = cv2.resize(im, (1280, 720))  # resize frame
+    image = cv2.cvtColor(im, cv2.COLOR_RGB2BGR)
+    cv2.imshow('posenet', overlay_image)
+
+    debug_image, gesture_id = gesture_detector.recognize(
+        image, number, mode)
+    gesture_buffer.add_gesture(gesture_id)
+    gesture_control(gesture_buffer)
+    cv2.imshow('Tello Gesture Recognition', debug_image)
+
+
+    video.write(overlay_image)
+   
+    cv2.waitKey(1)
+
 parser = argparse.ArgumentParser()
 parser.add_argument('--model', type=int, default=101)
 parser.add_argument('--cam_id', type=int, default=0)
