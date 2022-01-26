@@ -17,7 +17,7 @@ from model import PointHistoryClassifier
 
 
 class GestureRecognition:
-    def __init__(self, use_static_image_mode=False, min_detection_confidence=0.7, min_tracking_confidence=0.7,
+    def __init__(self, use_static_image_mode=False, min_detection_confidence=0.9, min_tracking_confidence=0.9,
                  history_length=16):
         self.use_static_image_mode = use_static_image_mode
         self.min_detection_confidence = min_detection_confidence
