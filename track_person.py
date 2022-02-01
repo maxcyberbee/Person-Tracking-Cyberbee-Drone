@@ -24,7 +24,8 @@ import threading
 import traceback
 from simple_pid import PID
 import tensorflow.compat.v1 as tf
-
+import socket
+import imagezmq
 from includes import get_args, getAviNameWithDate, CalculateControl
 tf.disable_v2_behavior()
 
@@ -41,12 +42,12 @@ drone_ud = 0  # up/down command
 drone_fb = 0  # forward/backward command
 
 framerate = 30.0
-out_stream = cv2.VideoWriter(
-    "appsrc ! videoconvert ! x264enc noise-reduction=10000 speed-preset=ultrafast tune=zerolatency ! rtph264pay config-interval=1 pt=96 ! tcpserversink host=127.0.0.1 port=5000 sync=false",
-    0,
-    framerate,
-    (1280, 720),
-)
+# out_stream = cv2.VideoWriter(
+#     "appsrc ! videoconvert ! x264enc noise-reduction=10000 speed-preset=ultrafast tune=zerolatency ! rtph264pay config-interval=1 pt=96 ! tcpserversink host=127.0.0.1 port=5000 sync=false",
+#     0,
+#     framerate,
+#     (1280, 720),
+# )
 
 filename = "temp"
 
@@ -220,10 +221,10 @@ def handler(event, sender, data, **args):
             mylist = list(filter(None, mylist))
             print(data)
             print(mylist)
-            current_height = int(mylist[2])
-            speed = int(mylist[6])
-            battery = int(mylist[9])
-            wifi_quality = int(mylist[12])
+            current_height = int(mylist[1])
+            speed = int(mylist[4])
+            battery = int(mylist[7])
+            wifi_quality = int(mylist[10])
             print("ALT: ", current_height, "speed", speed,
                   "battery", battery, "wifi_quality", wifi_quality)
             prev_flight_data = str(data)
@@ -294,9 +295,12 @@ def gesture_control(gesture_buffer):
             stopped_lr = False
 
 
+
 def Stream_Video():
     global new_image_ready
     global new_frame
+    sender = imagezmq.ImageSender(connect_to='tcp://127.0.0.1:5000')
+    deviceName = socket.gethostname()
     while not shutdown:
         if(new_image_ready):
             #print("write frame ----------------------")
@@ -305,7 +309,8 @@ def Stream_Video():
             im_save = cv2.resize(im_save, (1280, 720))
             im_save = cv2.cvtColor(im_save, cv2.COLOR_RGB2BGR)
             out_video_save.write(im_save)
-            out_stream.write(im_save)
+            sender.send_image(deviceName, im_save)
+            #out_stream.write(im_save)
         time.sleep(0.01)
 
 
@@ -344,7 +349,7 @@ def main():
     pid_ud = PID(0.3, 0.05, 0.15, setpoint=0, output_limits=(-80, 80))
     pid_fb = PID(0.4, 0.10, 0.25, setpoint=0, output_limits=(-50, 50))
 
-    video = cv2.VideoWriter('test_out.avi', -1, 1, (320, 240))
+    # video = cv2.VideoWriter('test_out.avi', -1, 1, (320, 240))
     # drone.subscribe(drone.EVENT_VIDEO_FRAME,handler)
     print("Start Running")
     with tf.Session() as sess:
@@ -397,7 +402,7 @@ def main():
                         drone_cc, drone_ud, drone_fb, control_on, last_locked_position, ready_to_land = CalculateControl(
                             control_on, keypoint_scores, keypoint_coords, pid_cc, pid_ud, pid_fb, overlay_image, start_hand_landing, desiredHeight)
                         ShowVideos(frame, overlay_image, gesture_detector,
-                                   number, mode, video, gesture_buffer)
+                                   number, mode, out_video_save, gesture_buffer)
 
         except KeyboardInterrupt as e:
             print(e)
@@ -407,7 +412,7 @@ def main():
             print(e)
 
     cv2.destroyAllWindows()
-    video.release()
+    out_video_save.release()
     drone.quit()
     exit(1)
 
