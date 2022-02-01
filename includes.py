@@ -6,40 +6,42 @@ import cv2
 import numpy
 
 landing_height = 130
+last_locked_position = [0, 0]
+ready_to_land = False
 
 
-def CalcWidthHight(keypoint_coords,start_hand_landing,desiredHeight):
-    
-    global last_body_height
-    
-    center_body_x, center_body_y,meanHeight = find_body_xy(keypoint_coords)
-   
-    
+def CalcWidthHight(keypoint_coords, start_hand_landing, desiredHeight):
+
+    global last_body_height, ready_to_land
+
+    center_body_x, center_body_y, meanHeight = find_body_xy(keypoint_coords)
+
     if(start_hand_landing):
         if(meanHeight >= landing_height):
             ready_to_land = True
 
-    
     last_body_height = meanHeight
     errorFB = meanHeight - desiredHeight
-    return center_body_x, center_body_y, errorFB,ready_to_land
+    return center_body_x, center_body_y, errorFB, ready_to_land
 
 
-def CalculateControl(control_on,keypoint_scores, keypoint_coords, pid_cc, pid_ud, pid_fb, overlay_image,start_hand_landing,desiredHeight):
-    
+def CalculateControl(control_on, keypoint_scores, keypoint_coords, pid_cc, pid_ud, pid_fb, overlay_image, start_hand_landing, desiredHeight):
+    global last_locked_position
+    global ready_to_land
     #print("------!!! calculate control!!! ----------------")
     centerx = int(overlay_image.shape[1]/2)
     centery = int(overlay_image.shape[0]/2)
-
     ctrl_out_cc = 0
     ctrl_out_ud = 0
     ctrl_out_fb = 0
-    errorFB = 0    
+    errorFB = 0
     errorx = 0
     errory = 0
 
     if control_on and (keypoint_scores[0, 5] > .1 and keypoint_scores[0, 6] > .1 and keypoint_scores[0, 11] > .1 and keypoint_scores[0, 12] > .1):
-        center_body_x, center_body_y, errorFB,ready_to_land = CalcWidthHight(keypoint_coords,start_hand_landing,desiredHeight)
+
+        center_body_x, center_body_y, errorFB, ready_to_land = CalcWidthHight(
+            keypoint_coords, start_hand_landing, desiredHeight)
 
         last_locked_position = [center_body_x, center_body_y]
 
@@ -73,8 +75,9 @@ def CalculateControl(control_on,keypoint_scores, keypoint_coords, pid_cc, pid_ud
         pid_fb.reset()
         pid_cc.reset()
         pid_ud.reset()
-    
-    return drone_cc,drone_ud,drone_fb,control_on,last_locked_position,ready_to_land
+
+    return drone_cc, drone_ud, drone_fb, control_on, last_locked_position, ready_to_land
+
 
 def find_body_xy(keypoint_coords):
     # find body y coords
@@ -85,7 +88,7 @@ def find_body_xy(keypoint_coords):
 
     meanHeight = int(((rightHipy_y - rightSholy_y) +
                       (leftHipy_y - leftSholy_y))/2)
-    
+
     # find body x coords
     leftSholy_x = int(keypoint_coords[0, 5, 1])
     rightSholy_x = int(keypoint_coords[0, 6, 1])
@@ -94,10 +97,10 @@ def find_body_xy(keypoint_coords):
 
     meanWidth = int(((rightHipy_x - leftHipy_x) +
                      (rightSholy_x - leftSholy_x))/2)
-    
+
     center_body_x = int(leftSholy_x+(meanWidth/2))
     center_body_y = int(leftSholy_y+(meanHeight/2))
-    return center_body_x,center_body_y,meanHeight
+    return center_body_x, center_body_y, meanHeight
 
 
 def getAviNameWithDate(nameIn="output.avi"):
