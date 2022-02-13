@@ -169,3 +169,7 @@ This directory stores files related to drone controllers and gesture modules.<br
 
 ### utils/cvfpscalc.py
 Module for FPS measurement.
+
+### run for video streaming
+    sudo apt install v4l2loopback-dkms
+    sudo modprobe v4l2loopback devices=1

@@ -27,10 +27,15 @@ import tensorflow.compat.v1 as tf
 
 from includes import get_args, getAviNameWithDate, CalculateControl
 import pyvirtualcam
-import json 
+import json
 
 import socket
 import pygame
+
+from http.server import BaseHTTPRequestHandler, HTTPServer
+from urllib.parse import parse_qs
+import cgi
+
 
 from sys import stdout
 # Initialize pygame for joystick support
@@ -80,13 +85,44 @@ stopped_lr = False
 current_height, speed, battery, wifi_quality = 0, 0, 0, 0
 lr_timeout = 0
 time_out_LR = 500
-json_to_send = json.loads('{ "Height":-1, "Speed":-1, "Battery":-1, "Wifi_quality":-1}')
+json_to_send = json.loads(
+    '{ "Height":-1, "Speed":-1, "Battery":-1, "Wifi_quality":-1}')
 tracker_on = False
-bbox = (0,0,0,0)
+bbox = (0, 0, 0, 0)
 TCP_IP = '127.0.0.1'
 TCP_PORT = 7000
 BUFFER_SIZE = 1024
 MESSAGE = "Hello, World!"
+
+
+class GP(BaseHTTPRequestHandler):
+    def _set_headers(self):
+        self.send_response(200)
+        self.send_header('Content-type', 'text/html')
+        self.end_headers()
+
+    def do_HEAD(self):
+        self._set_headers()
+
+    def do_GET(self):
+        self._set_headers()
+        print(self.path)
+        print(parse_qs(self.path[2:]))
+        string_to_send = json_to_send.encode(encoding='utf_8')
+        self.wfile.write(string_to_send)
+
+    def do_POST(self):
+        self._set_headers()
+        form = cgi.FieldStorage(
+            fp=self.rfile,
+            headers=self.headers,
+            environ={'REQUEST_METHOD': 'POST'}
+        )
+        print(form.getvalue("foo"))
+        print(form.getvalue("bin"))
+        self.wfile.write(
+            "<html><body><h1>POST Request Received!</h1></body></html>")
+
 
 def controller_thread():
     global drone
@@ -211,27 +247,23 @@ def controller_thread():
             # move right/left finished
             if(time_out_LR < round(time.time() * 1000) - lr_timeout and not time_out_LR < 2*round(time.time() * 1000) - lr_timeout):
                 drone.left(0)
-                
+
             pygame.event.pump()
-            
-            roll = 20* controller.get_axis(0)
-            pitch = 20* controller.get_axis(1)
-            yaw = 20* controller.get_axis(3)
-            gaz = 20* controller.get_axis(2)
-            
+
+            roll = 20 * controller.get_axis(0)
+            pitch = 20 * controller.get_axis(1)
+            yaw = 20 * controller.get_axis(3)
+            gaz = 20 * controller.get_axis(2)
+
             if(1 == controller.get_axis(6)):
                 control_on = False
-                drone.clockwise(yaw)                
-                drone.up(gaz)               
+                drone.clockwise(yaw)
+                drone.up(gaz)
                 drone.forward(pitch)
                 drone.right(roll)
-                
+
             else:
                 control_on = True
-                    
-                
-            
-            
 
             # stdout.write('%s | Axes: ' % controller.get_name())
 
@@ -241,7 +273,6 @@ def controller_thread():
             # for k in range(controller.get_numbuttons()):
             #     stdout.write('%d:%d ' % (k, controller.get_button(k)))
             # stdout.write('\n')
-                
 
     except KeyboardInterrupt as e:
         print(e)
@@ -252,19 +283,13 @@ def controller_thread():
     finally:
         run_controller_thread = False
 
-def TCP_ResponceThread():
-    global json_to_send
-    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    s.bind((TCP_IP, TCP_PORT))
-    s.listen(1)
-    conn, addr = s.accept()
-    print ('Connection address:', addr)
-    while not shutdown:
-        data = conn.recv(BUFFER_SIZE)
-        if not data: break
-        print ("received data:", data)
-        conn.send(json_to_send)  # echo
-    conn.close()
+
+def URL_ResponceThread(server_class=HTTPServer, handler_class=GP, port=8088):
+    server_address = ('', port, )
+    httpd = server_class(server_address, handler_class)
+    print('Server running at localhost:8088...')
+    httpd.serve_forever()
+
 
 def handler(event, sender, data, **args):
     global prev_flight_data
@@ -275,19 +300,18 @@ def handler(event, sender, data, **args):
     if event is drone.EVENT_FLIGHT_DATA:
         if prev_flight_data != str(data):
             mylist = str(data).split(" ")
-            mylist = list(filter(None, mylist))            
+            mylist = list(filter(None, mylist))
             current_height = int(mylist[1])
             speed = int(mylist[4])
             battery = int(mylist[7])
             wifi_quality = int(mylist[10])
-            json_string =  {
+            json_string = {
                 "Height": current_height,
                 "Speed": speed,
                 "Battery": battery,
                 "Wifi_quality": wifi_quality
             }
-            
-            
+
             json_to_send = json.dumps(json_string)
             print(json_to_send)
             prev_flight_data = str(data)
@@ -295,15 +319,15 @@ def handler(event, sender, data, **args):
         print('event="%s" data=%s' % (event.getname(), str(data)))
 
 
-def ShowVideos( overlay_image, debug_image, video):
+def ShowVideos(overlay_image, debug_image, video):
 
     # im = numpy.array(frame.to_image())
     # im = cv2.resize(im, (960, 720))  # resize frame
-    # image = cv2.cvtColor(im, cv2.COLOR_RGB2BGR)    
-    #show tracking + body recognition
+    # image = cv2.cvtColor(im, cv2.COLOR_RGB2BGR)
+    # show tracking + body recognition
     p1 = (int(bbox[0]), int(bbox[1]))
     p2 = (int(bbox[0] + bbox[2]), int(bbox[1] + bbox[3]))
-    cv2.rectangle(overlay_image, p1, p2, (255,0,0), 2, 1)
+    cv2.rectangle(overlay_image, p1, p2, (255, 0, 0), 2, 1)
     overlay_image = cv2.resize(overlay_image, (960, 720))
     cv2.imshow('posenet', overlay_image)
 
@@ -325,7 +349,7 @@ def gesture_control(gesture_buffer):
     global gesture_start_control
     global lr_timeout
     global stopped_lr
-    
+
     gesture_id = gesture_buffer.get_gesture()
 
     print("GESTURE", gesture_id)
@@ -361,11 +385,10 @@ def gesture_control(gesture_buffer):
             stopped_lr = False
 
 
-
 def Stream_Video():
     global new_image_ready
     global new_frame
-    with pyvirtualcam.Camera(width=960, height=720, fps=30) as cam: 
+    with pyvirtualcam.Camera(width=960, height=720, fps=30) as cam:
         if(new_image_ready):
             #print("write frame ----------------------")
             new_image_ready = False
@@ -374,38 +397,36 @@ def Stream_Video():
             im_save = cv2.cvtColor(im_save, cv2.COLOR_RGB2BGR)
             out_video_save.write(im_save)
             cam.send(im_save)
-            
-            #out_stream.write(im_save)
+
+            # out_stream.write(im_save)
         time.sleep(0.01)
 
+
 def ObjectTracker():
-    global tracking_ok, bbox,tracker_initilaized
+    global tracking_ok, bbox, tracker_initilaized
     tracker = cv2.TrackerMedianFlow_create()
     fail_count = 0
     while not shutdown and tracker_on:
-        if(new_image_ready):              
+        if(new_image_ready):
             frame = numpy.array(new_frame.to_image())
             # Start timer
-            if(not (0,0,0,0) == bbox and not tracker_initilaized):  
-                tracker_initilaized = True   
+            if(not (0, 0, 0, 0) == bbox and not tracker_initilaized):
+                tracker_initilaized = True
                 ok = tracker.init(frame, bbox)
 
             # Update tracker
             elif(tracker_initilaized and tracking_ok):
-                ok, bbox = tracker.update(frame)         
+                ok, bbox = tracker.update(frame)
 
-                
                 if ok:
-                   fail_count = 0
-                    
-                else :
-                    fail_count +=1
+                    fail_count = 0
+
+                else:
+                    fail_count += 1
                     if(30 < fail_count):
                         tracking_ok = False
                     # Tracking failure
-                
-    
-       
+
 
 def main():
     global drone
@@ -423,7 +444,7 @@ def main():
     global last_locked_position
     global ready_to_land
     global bbox
-   
+
     args_gest = get_args()
     gesture_detector = GestureRecognition(args_gest.use_static_image_mode, args_gest.min_detection_confidence,
                                           args_gest.min_tracking_confidence)
@@ -456,7 +477,8 @@ def main():
             threading.Thread(target=controller_thread).start()
             threading.Thread(target=Stream_Video).start()
             threading.Thread(target=ObjectTracker).start()
-            
+            threading.Thread(target=URL_ResponceThread).start()
+
             container = av.open(drone.get_video_stream())
             frame_count = 0
             while not shutdown:
@@ -496,12 +518,13 @@ def main():
                             display_image, pose_scores, keypoint_scores, keypoint_coords,
                             min_pose_score=0.15, min_part_score=0.1)
 
-                        drone_cc, drone_ud, drone_fb, control_on, last_locked_position, ready_to_land,bbox = CalculateControl(
+                        drone_cc, drone_ud, drone_fb, control_on, last_locked_position, ready_to_land, bbox = CalculateControl(
                             control_on, keypoint_scores, keypoint_coords, pid_cc, pid_ud, pid_fb, overlay_image, start_hand_landing, desiredHeight)
-                        debug_image, gesture_id = gesture_detector.recognize( image, number, mode)
+                        debug_image, gesture_id = gesture_detector.recognize(
+                            image, number, mode)
                         gesture_buffer.add_gesture(gesture_id)
                         gesture_control(gesture_buffer)
-                        ShowVideos(overlay_image,debug_image, out_video_save)
+                        ShowVideos(overlay_image, debug_image, out_video_save)
 
         except KeyboardInterrupt as e:
             print(e)
