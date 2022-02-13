@@ -13,8 +13,9 @@ ready_to_land = False
 def CalcWidthHight(keypoint_coords, start_hand_landing, desiredHeight):
 
     global last_body_height, ready_to_land
+    bbox = (0,0,0,0)
 
-    center_body_x, center_body_y, meanHeight = find_body_xy(keypoint_coords)
+    center_body_x, center_body_y, meanHeight,bbox = find_body_xy(keypoint_coords)
 
     if(start_hand_landing):
         if(meanHeight >= landing_height):
@@ -22,7 +23,7 @@ def CalcWidthHight(keypoint_coords, start_hand_landing, desiredHeight):
 
     last_body_height = meanHeight
     errorFB = meanHeight - desiredHeight
-    return center_body_x, center_body_y, errorFB, ready_to_land
+    return center_body_x, center_body_y, errorFB, ready_to_land,bbox
 
 
 def CalculateControl(control_on, keypoint_scores, keypoint_coords, pid_cc, pid_ud, pid_fb, overlay_image, start_hand_landing, desiredHeight):
@@ -37,10 +38,11 @@ def CalculateControl(control_on, keypoint_scores, keypoint_coords, pid_cc, pid_u
     errorFB = 0
     errorx = 0
     errory = 0
+    bbox = (0,0,0,0)
 
     if control_on and (keypoint_scores[0, 5] > .1 and keypoint_scores[0, 6] > .1 and keypoint_scores[0, 11] > .1 and keypoint_scores[0, 12] > .1):
 
-        center_body_x, center_body_y, errorFB, ready_to_land = CalcWidthHight(
+        center_body_x, center_body_y, errorFB, ready_to_land,bbox = CalcWidthHight(
             keypoint_coords, start_hand_landing, desiredHeight)
 
         last_locked_position = [center_body_x, center_body_y]
@@ -76,7 +78,7 @@ def CalculateControl(control_on, keypoint_scores, keypoint_coords, pid_cc, pid_u
         pid_cc.reset()
         pid_ud.reset()
 
-    return drone_cc, drone_ud, drone_fb, control_on, last_locked_position, ready_to_land
+    return drone_cc, drone_ud, drone_fb, control_on, last_locked_position, ready_to_land,bbox
 
 
 def find_body_xy(keypoint_coords):
@@ -100,7 +102,10 @@ def find_body_xy(keypoint_coords):
 
     center_body_x = int(leftSholy_x+(meanWidth/2))
     center_body_y = int(leftSholy_y+(meanHeight/2))
-    return center_body_x, center_body_y, meanHeight
+    body_width = meanWidth*2
+    body_height = meanHeight *2
+    bbox = (leftSholy_x,leftSholy_y,body_width,body_height)
+    return center_body_x, center_body_y, meanHeight,bbox
 
 
 def getAviNameWithDate(nameIn="output.avi"):

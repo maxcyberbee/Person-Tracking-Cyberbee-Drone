@@ -24,9 +24,15 @@ import threading
 import traceback
 from simple_pid import PID
 import tensorflow.compat.v1 as tf
-import socket
+
 import imagezmq
 from includes import get_args, getAviNameWithDate, CalculateControl
+import pyvirtualcam
+import json 
+
+import socket
+
+
 tf.disable_v2_behavior()
 
 
@@ -46,7 +52,7 @@ framerate = 30.0
 #     "appsrc ! videoconvert ! x264enc noise-reduction=10000 speed-preset=ultrafast tune=zerolatency ! rtph264pay config-interval=1 pt=96 ! tcpserversink host=127.0.0.1 port=5000 sync=false",
 #     0,
 #     framerate,
-#     (1280, 720),
+#     (960, 720),
 # )
 
 filename = "temp"
@@ -73,7 +79,13 @@ stopped_lr = False
 current_height, speed, battery, wifi_quality = 0, 0, 0, 0
 lr_timeout = 0
 time_out_LR = 500
+json_to_send = json.loads('{ "Height":-1, "Speed":-1, "Battery":-1, "Wifi_quality":-1')
+tracker_on = False
 
+TCP_IP = '127.0.0.1'
+TCP_PORT = 5005
+BUFFER_SIZE = 1024
+MESSAGE = "Hello, World!"
 
 def controller_thread():
     global drone
@@ -165,20 +177,20 @@ def controller_thread():
             if(gesture_take_off):
                 gesture_take_off = False
                 time.sleep(0.2)
-                drone.takeoff()
+                drone.throw_and_go()
                 took_off = True
-                time.sleep(0.2)
-                drone.down(20)
-                time.sleep(0.2)
+                time.sleep(0.1)
+                drone.up(20)
+                time.sleep(0.1)
                 drone.backward(20)
-                time.sleep(0.2)
-                drone.down(20)
-                time.sleep(0.2)
+                time.sleep(0.1)
+                drone.up(20)
+                time.sleep(0.1)
                 drone.backward(20)
 
             if(ready_to_land and 3500 < (round(time.time() * 1000) - landing_timeout)):
                 print("-----------------landing-----------------------")
-                drone.land()
+                drone.palm_land()
                 control_on = False  # disable control
                 start_hand_landing = False
                 took_off = False
@@ -196,9 +208,9 @@ def controller_thread():
                 control_on = True  # disable control
 
             # move right/left finished
-            if(time_out_LR < round(time.time() * 1000) - lr_timeout and not stopped_lr):
+            if(time_out_LR < round(time.time() * 1000) - lr_timeout and not time_out_LR < 2*round(time.time() * 1000) - lr_timeout):
                 drone.left(0)
-                stopped_lr = True
+                
 
     except KeyboardInterrupt as e:
         print(e)
@@ -209,40 +221,55 @@ def controller_thread():
     finally:
         run_controller_thread = False
 
+def TCP_ResponceThread():
+    global json_to_send
+    s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    s.bind((TCP_IP, TCP_PORT))
+    s.listen(1)
+    conn, addr = s.accept()
+    print ('Connection address:', addr)
+    while not shutdown:
+        data = conn.recv(BUFFER_SIZE)
+        if not data: break
+        print ("received data:", data)
+        conn.send(json_to_send)  # echo
+    conn.close()
 
 def handler(event, sender, data, **args):
     global prev_flight_data
     global current_height, speed, battery, wifi_quality
+    global json_to_send
 
     drone = sender
     if event is drone.EVENT_FLIGHT_DATA:
         if prev_flight_data != str(data):
             mylist = str(data).split(" ")
-            mylist = list(filter(None, mylist))
-            print(data)
-            print(mylist)
+            mylist = list(filter(None, mylist))            
             current_height = int(mylist[1])
             speed = int(mylist[4])
             battery = int(mylist[7])
             wifi_quality = int(mylist[10])
-            print("ALT: ", current_height, "speed", speed,
-                  "battery", battery, "wifi_quality", wifi_quality)
+            json_string =  '{ "Height":{0}, "Speed":{1}, "Battery":{2}, "Wifi_quality":{3}'.fomat(current_height,speed,battery,wifi_quality)
+            json_to_send = json.loads(json_string)
+            print(json_to_send)
             prev_flight_data = str(data)
     else:
         print('event="%s" data=%s' % (event.getname(), str(data)))
 
 
-def ShowVideos(frame, overlay_image, gesture_detector, number, mode, video, gesture_buffer):
+def ShowVideos( overlay_image, debug_image, video):
 
-    im = numpy.array(frame.to_image())
-    im = cv2.resize(im, (1280, 720))  # resize frame
-    image = cv2.cvtColor(im, cv2.COLOR_RGB2BGR)
+    # im = numpy.array(frame.to_image())
+    # im = cv2.resize(im, (960, 720))  # resize frame
+    # image = cv2.cvtColor(im, cv2.COLOR_RGB2BGR)    
+    #show tracking + body recognition
+    p1 = (int(bbox[0]), int(bbox[1]))
+    p2 = (int(bbox[0] + bbox[2]), int(bbox[1] + bbox[3]))
+    cv2.rectangle(overlay_image, p1, p2, (255,0,0), 2, 1)
+    overlay_image = cv2.resize(overlay_image, (960, 720))
     cv2.imshow('posenet', overlay_image)
 
-    debug_image, gesture_id = gesture_detector.recognize(
-        image, number, mode)
-    gesture_buffer.add_gesture(gesture_id)
-    gesture_control(gesture_buffer)
+    
     cv2.imshow('Tello Gesture Recognition', debug_image)
 
     video.write(overlay_image)
@@ -299,20 +326,47 @@ def gesture_control(gesture_buffer):
 def Stream_Video():
     global new_image_ready
     global new_frame
-    sender = imagezmq.ImageSender(connect_to='tcp://127.0.0.1:5000')
-    deviceName = socket.gethostname()
-    while not shutdown:
+    with pyvirtualcam.Camera(width=960, height=720, fps=30) as cam: 
         if(new_image_ready):
             #print("write frame ----------------------")
             new_image_ready = False
             im_save = numpy.array(new_frame.to_image())
-            im_save = cv2.resize(im_save, (1280, 720))
+            im_save = cv2.resize(im_save, (960, 720))
             im_save = cv2.cvtColor(im_save, cv2.COLOR_RGB2BGR)
             out_video_save.write(im_save)
-            sender.send_image(deviceName, im_save)
+            cam.send(im_save)
+            
             #out_stream.write(im_save)
         time.sleep(0.01)
 
+def ObjectTracker():
+    global tracking_ok, bbox,tracker_initilaized
+    tracker = cv2.TrackerMedianFlow_create()
+    fail_count = 0
+    while not shutdown and tracker_on:
+        if(new_image_ready):              
+            frame = numpy.array(new_frame.to_image())
+            # Start timer
+            if(not (0,0,0,0) == bbox and not tracker_initilaized):  
+                tracker_initilaized = True   
+                ok = tracker.init(frame, bbox)
+
+            # Update tracker
+            elif(tracker_initilaized and tracking_ok):
+                ok, bbox = tracker.update(frame)         
+
+                
+                if ok:
+                   fail_count = 0
+                    
+                else :
+                    fail_count +=1
+                    if(30 < fail_count):
+                        tracking_ok = False
+                    # Tracking failure
+                
+    
+       
 
 def main():
     global drone
@@ -399,10 +453,12 @@ def main():
                             display_image, pose_scores, keypoint_scores, keypoint_coords,
                             min_pose_score=0.15, min_part_score=0.1)
 
-                        drone_cc, drone_ud, drone_fb, control_on, last_locked_position, ready_to_land = CalculateControl(
+                        drone_cc, drone_ud, drone_fb, control_on, last_locked_position, ready_to_land,bbox = CalculateControl(
                             control_on, keypoint_scores, keypoint_coords, pid_cc, pid_ud, pid_fb, overlay_image, start_hand_landing, desiredHeight)
-                        ShowVideos(frame, overlay_image, gesture_detector,
-                                   number, mode, out_video_save, gesture_buffer)
+                        debug_image, gesture_id = gesture_detector.recognize( image, number, mode)
+                        gesture_buffer.add_gesture(gesture_id)
+                        gesture_control(gesture_buffer)
+                        ShowVideos(overlay_image,debug_image, out_video_save)
 
         except KeyboardInterrupt as e:
             print(e)
@@ -421,5 +477,5 @@ if __name__ == '__main__':
     global out_video_save
     filename = getAviNameWithDate("output_videos/output.avi")
     fourcc = cv2.VideoWriter_fourcc('M', 'J', 'P', 'G')
-    out_video_save = cv2.VideoWriter(filename, fourcc, 30, (1280, 720))
+    out_video_save = cv2.VideoWriter(filename, fourcc, 30, (960, 720))
     main()
