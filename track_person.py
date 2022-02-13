@@ -25,13 +25,20 @@ import traceback
 from simple_pid import PID
 import tensorflow.compat.v1 as tf
 
-import imagezmq
 from includes import get_args, getAviNameWithDate, CalculateControl
 import pyvirtualcam
 import json 
 
 import socket
+import pygame
 
+from sys import stdout
+# Initialize pygame for joystick support
+pygame.display.init()
+pygame.joystick.init()
+
+controller = pygame.joystick.Joystick(0)
+controller.init()
 
 tf.disable_v2_behavior()
 
@@ -48,12 +55,6 @@ drone_ud = 0  # up/down command
 drone_fb = 0  # forward/backward command
 
 framerate = 30.0
-# out_stream = cv2.VideoWriter(
-#     "appsrc ! videoconvert ! x264enc noise-reduction=10000 speed-preset=ultrafast tune=zerolatency ! rtph264pay config-interval=1 pt=96 ! tcpserversink host=127.0.0.1 port=5000 sync=false",
-#     0,
-#     framerate,
-#     (960, 720),
-# )
 
 filename = "temp"
 
@@ -79,11 +80,11 @@ stopped_lr = False
 current_height, speed, battery, wifi_quality = 0, 0, 0, 0
 lr_timeout = 0
 time_out_LR = 500
-json_to_send = json.loads('{ "Height":-1, "Speed":-1, "Battery":-1, "Wifi_quality":-1')
+json_to_send = json.loads('{ "Height":-1, "Speed":-1, "Battery":-1, "Wifi_quality":-1}')
 tracker_on = False
-
+bbox = (0,0,0,0)
 TCP_IP = '127.0.0.1'
-TCP_PORT = 5005
+TCP_PORT = 7000
 BUFFER_SIZE = 1024
 MESSAGE = "Hello, World!"
 
@@ -211,6 +212,36 @@ def controller_thread():
             if(time_out_LR < round(time.time() * 1000) - lr_timeout and not time_out_LR < 2*round(time.time() * 1000) - lr_timeout):
                 drone.left(0)
                 
+            pygame.event.pump()
+            
+            roll = 20* controller.get_axis(0)
+            pitch = 20* controller.get_axis(1)
+            yaw = 20* controller.get_axis(3)
+            gaz = 20* controller.get_axis(2)
+            
+            if(1 == controller.get_axis(6)):
+                control_on = False
+                drone.clockwise(yaw)                
+                drone.up(gaz)               
+                drone.forward(pitch)
+                drone.right(roll)
+                
+            else:
+                control_on = True
+                    
+                
+            
+            
+
+            # stdout.write('%s | Axes: ' % controller.get_name())
+
+            # for k in range(controller.get_numaxes()):
+            #     stdout.write('%d:%+2.2f ' % (k, controller.get_axis(k)))
+            # stdout.write(' | Buttons: ')
+            # for k in range(controller.get_numbuttons()):
+            #     stdout.write('%d:%d ' % (k, controller.get_button(k)))
+            # stdout.write('\n')
+                
 
     except KeyboardInterrupt as e:
         print(e)
@@ -249,8 +280,15 @@ def handler(event, sender, data, **args):
             speed = int(mylist[4])
             battery = int(mylist[7])
             wifi_quality = int(mylist[10])
-            json_string =  '{ "Height":{0}, "Speed":{1}, "Battery":{2}, "Wifi_quality":{3}'.fomat(current_height,speed,battery,wifi_quality)
-            json_to_send = json.loads(json_string)
+            json_string =  {
+                "Height": current_height,
+                "Speed": speed,
+                "Battery": battery,
+                "Wifi_quality": wifi_quality
+            }
+            
+            
+            json_to_send = json.dumps(json_string)
             print(json_to_send)
             prev_flight_data = str(data)
     else:
@@ -269,7 +307,7 @@ def ShowVideos( overlay_image, debug_image, video):
     overlay_image = cv2.resize(overlay_image, (960, 720))
     cv2.imshow('posenet', overlay_image)
 
-    
+    debug_image = cv2.resize(debug_image, (960, 720))
     cv2.imshow('Tello Gesture Recognition', debug_image)
 
     video.write(overlay_image)
@@ -287,6 +325,7 @@ def gesture_control(gesture_buffer):
     global gesture_start_control
     global lr_timeout
     global stopped_lr
+    
     gesture_id = gesture_buffer.get_gesture()
 
     print("GESTURE", gesture_id)
@@ -383,6 +422,8 @@ def main():
     global control_on
     global last_locked_position
     global ready_to_land
+    global bbox
+   
     args_gest = get_args()
     gesture_detector = GestureRecognition(args_gest.use_static_image_mode, args_gest.min_detection_confidence,
                                           args_gest.min_tracking_confidence)
@@ -414,6 +455,8 @@ def main():
             # threading.Thread(target=recv_thread).start()
             threading.Thread(target=controller_thread).start()
             threading.Thread(target=Stream_Video).start()
+            threading.Thread(target=ObjectTracker).start()
+            
             container = av.open(drone.get_video_stream())
             frame_count = 0
             while not shutdown:
@@ -423,7 +466,7 @@ def main():
                     new_image_ready = True
 
                     # skip first 100 frames
-                    if frame_count < 100:
+                    if frame_count < 200:
                         continue
                     if frame_count % 4 == 0:
                         im = numpy.array(frame.to_image())
