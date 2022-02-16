@@ -106,7 +106,7 @@ def draw_skel_and_kp(
 
             if ks < min_part_score:
                 continue
-            cv_keypoints.append(cv2.KeyPoint(kc[1], kc[0], 10. * ks))
+            cv_keypoints.append(cv2.KeyPoint(kc[1]*3, kc[0]*3, 10. * ks))
             #draw line to specific body part if confidence is greater than desired
             # if kpoint == 0 and keypoint_scores[ii,kpoint] > .04:
             #     out_img = cv2.line(out_img, (int(out_img.shape[1]/2),int(out_img.shape[0]/2)), (int(keypoint_coords[0,kpoint,1]), int(keypoint_coords[0,kpoint,0])), (255, 255, 0), 2)
