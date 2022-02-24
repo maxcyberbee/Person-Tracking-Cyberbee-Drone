@@ -97,6 +97,7 @@ tracker_on = False
 bbox = (0, 0, 0, 0)
 face_detected_front = False
 face_detected_back = False
+enable_gesture_control = False
 
 
 class CamHandler(BaseHTTPRequestHandler):
@@ -218,6 +219,7 @@ def controller_thread():
                 took_off = False
                 start_hand_landing = False
                 ready_to_land = False
+                
             elif keyboard.is_pressed('m'):
                 start_hand_landing = True
 
@@ -426,36 +428,36 @@ def gesture_control(gesture_buffer):
     gesture_id = gesture_buffer.get_gesture()
 
     print("GESTURE", gesture_id)
+    if(enable_gesture_control):
+        if (gesture_id == 2 or gesture_id == 0):  # UP / Forward - Take off
+            if(1000 < round(time.time() * 1000)-last_up_time_mili):
+                up_count = 0
+            last_up_time_mili = round(time.time() * 1000)
+            up_count += 1
+            if(take_of_from_gesture_count < up_count):
+                if(not start_hand_landing or not took_off):
+                    gesture_take_off = True
+                elif(took_off):
+                    control_on = True
+                    gesture_start_control = True
 
-    if (gesture_id == 2 or gesture_id == 0):  # UP / Forward - Take off
-        if(1000 < round(time.time() * 1000)-last_up_time_mili):
-            up_count = 0
-        last_up_time_mili = round(time.time() * 1000)
-        up_count += 1
-        if(take_of_from_gesture_count < up_count):
-            if(not start_hand_landing or not took_off):
-                gesture_take_off = True
-            elif(took_off):
-                control_on = True
-                gesture_start_control = True
+        if gesture_id == 3:  # LAND
+            if(not start_hand_landing):
+                desiredHeight = landing_height
+                start_hand_landing = True
+                landing_timeout = round(time.time() * 1000)
 
-    if gesture_id == 3:  # LAND
-        if(not start_hand_landing):
-            desiredHeight = landing_height
-            start_hand_landing = True
-            landing_timeout = round(time.time() * 1000)
+        elif gesture_id == 7:  # LEFT
+            if(time_out_LR < round(time.time() * 1000) - lr_timeout):
+                lr_timeout = round(time.time() * 1000)
+                drone.left(20)
+                stopped_lr = False
 
-    elif gesture_id == 7:  # LEFT
-        if(time_out_LR < round(time.time() * 1000) - lr_timeout):
-            lr_timeout = round(time.time() * 1000)
-            drone.left(20)
-            stopped_lr = False
-
-    elif gesture_id == 6:  # RIGHT
-        if(time_out_LR < round(time.time() * 1000) - lr_timeout):
-            lr_timeout = round(time.time() * 1000)
-            drone.right(20)
-            stopped_lr = False
+        elif gesture_id == 6:  # RIGHT
+            if(time_out_LR < round(time.time() * 1000) - lr_timeout):
+                lr_timeout = round(time.time() * 1000)
+                drone.right(20)
+                stopped_lr = False
 
 
 
