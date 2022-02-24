@@ -98,7 +98,7 @@ def draw_skel_and_kp(
             continue
 
         new_keypoints = get_adjacent_keypoints(
-            keypoint_scores[ii, :], keypoint_coords[ii, :, :], min_part_score)
+            keypoint_scores[ii, :], keypoint_coords[ii, :, :]*3, min_part_score)
         adjacent_keypoints.extend(new_keypoints)
 
         kpoint = 0

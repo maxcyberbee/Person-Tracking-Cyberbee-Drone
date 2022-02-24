@@ -69,6 +69,7 @@ class GestureRecognition:
         USE_BRECT = True
 
         image = cv.flip(image, 1)  # Mirror display
+        
         debug_image = copy.deepcopy(image)
 
         # Saving gesture id for drone controlling

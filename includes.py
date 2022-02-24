@@ -47,8 +47,8 @@ def CalculateControl(control_on, keypoint_scores, keypoint_coords, pid_cc, pid_u
 
         last_locked_position = [center_body_x, center_body_y]
 
-        overlay_image = cv2.line(overlay_image, (centerx, centery - 10),
-                                 (center_body_x, center_body_y), (255, 255, 0), 2)
+        # overlay_image = cv2.line(overlay_image, (centerx, centery - 10),
+        #                          (center_body_x, center_body_y), (255, 255, 0), 2)
         errorx = center_body_x - centerx
         errory = center_body_y - centery - 10
         if abs(errorx) > 2:
@@ -102,10 +102,10 @@ def find_body_xy(keypoint_coords):
 
     center_body_x = int(leftSholy_x+(meanWidth/2))
     center_body_y = int(leftSholy_y+(meanHeight/2))
-    body_width = meanWidth*2
-    body_height = meanHeight *2
-    bbox = (leftSholy_x,leftSholy_y,body_width,body_height)
-    return center_body_x, center_body_y, meanHeight,bbox
+    body_width = meanWidth*2*3
+    body_height = meanHeight *2*3
+    bbox = (leftSholy_x*3,leftSholy_y*3,body_width,body_height)
+    return center_body_x*3, center_body_y*3, meanHeight*3,bbox
 
 
 def getAviNameWithDate(nameIn="output.avi"):

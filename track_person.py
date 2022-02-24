@@ -38,6 +38,15 @@ import cgi
 
 
 from sys import stdout
+
+import cv2
+from PIL import Image
+import threading
+from socketserver import ThreadingMixIn
+from io import StringIO,BytesIO
+import time
+
+
 # Initialize pygame for joystick support
 pygame.display.init()
 pygame.joystick.init()
@@ -46,9 +55,6 @@ controller = pygame.joystick.Joystick(0)
 controller.init()
 
 tf.disable_v2_behavior()
-
-
-#
 
 
 prev_flight_data = None
@@ -66,9 +72,9 @@ filename = "temp"
 start_hand_landing = False  # true when gesture recognized
 ready_to_land = False  # true when size of body match the requested
 # number of pixel for size of body in frame (distance control)
-desiredHeight = 70
+desiredHeight = 200
 # number of pixel for size of body in frame for landing in hand  (distance control)
-landing_height = 130
+landing_height = 500
 landing_timeout = 0
 up_count = 0  # number of up gestures recognized
 take_of_from_gesture_count = 5
@@ -92,10 +98,45 @@ bbox = (0, 0, 0, 0)
 face_detected_front = False
 face_detected_back = False
 
+
+class CamHandler(BaseHTTPRequestHandler):
+    def do_GET(self):
+        global new_image_ready,new_frame
+        if (self.path.endswith('.mjpg')):
+            self.send_response(200)
+            self.send_header(
+                'Content-type', 'multipart/x-mixed-replace; boundary=--jpgboundary')
+            self.end_headers()
+            while not shutdown:
+                if(new_image_ready):
+                    imgRGB=cv2.cvtColor(new_frame,cv2.COLOR_BGR2RGB)
+                    jpg = Image.fromarray(imgRGB)
+                    tmpFile = BytesIO()
+                    jpg.save(tmpFile,'JPEG')
+                    self.wfile.write("--jpgboundary".encode())
+                    self.send_header('Content-type','image/jpeg')
+                    self.send_header('Content-length',str(tmpFile.getbuffer().nbytes))
+                    self.end_headers()
+                    jpg.save(self.wfile,'JPEG')
+                    time.sleep(0.05)
+        if self.path.endswith('.html'):
+            self.send_response(200)
+            self.send_header('Content-type', 'text/html')
+            self.end_headers()
+            self.wfile.write('<html><head></head><body>')
+            self.wfile.write('<img src="http://localhost:8000/cam.mjpg"/>')
+            self.wfile.write('</body></html>')
+            return
+
+
+class ThreadedHTTPServer(ThreadingMixIn, HTTPServer):
+    """Handle requests in a separate thread."""
+
+
 class GP(BaseHTTPRequestHandler):
     def _set_headers(self):
         self.send_response(200)
-        self.send_header('Content-type', 'text/html')
+        self.send_header('Access-Control-Allow-Origin', '*')
         self.end_headers()
 
     def do_HEAD(self):
@@ -121,6 +162,12 @@ class GP(BaseHTTPRequestHandler):
             "<html><body><h1>POST Request Received!</h1></body></html>")
 
 
+def Stream_Video():
+    time.sleep(15)
+    server = ThreadedHTTPServer(('', 8000), CamHandler)
+    server.serve_forever()
+    
+
 def controller_thread():
     global drone
     global drone_cc
@@ -136,13 +183,13 @@ def controller_thread():
     global gesture_start_control
     global lr_timeout
     global stopped_lr
-    global face_detected_front,face_detected_back
+    global face_detected_front, face_detected_back
     # initialize previous drone control inputs
     control_on = True  # allows you to toggle control so that you can force landing
     pdrone_cc = -111
     pdrone_ud = -111
     pdrone_fb = -111
-
+    left_stop_count = 0
     global run_controller_thread
     print('start controller_thread()')
     try:
@@ -150,7 +197,17 @@ def controller_thread():
             time.sleep(.03)
             # takeoff
             if keyboard.is_pressed('space'):
-                drone.takeoff()
+                drone.throw_and_go()
+                #time.sleep(0.4)
+                took_off = True
+                time.sleep(1)
+                drone.up(30)
+                time.sleep(0.2)
+                drone.backward(20)
+                time.sleep(0.1)
+                drone.up(20)
+                time.sleep(0.1)
+                drone.backward(20)
                 control_on = True
                 took_off = True
             # land
@@ -161,6 +218,8 @@ def controller_thread():
                 took_off = False
                 start_hand_landing = False
                 ready_to_land = False
+            elif keyboard.is_pressed('m'):
+                start_hand_landing = True
 
             elif keyboard.is_pressed('q'):
                 drone.counter_clockwise(40)
@@ -180,16 +239,16 @@ def controller_thread():
                 drone.left(0)
             elif keyboard.is_pressed('t'):  # toggle controls
                 control_on = not control_on
-            elif keyboard.is_pressed('f'):  # toggle Face detected    
+            elif keyboard.is_pressed('f'):  # toggle Face detected
                 face_detected_front = True
-            elif keyboard.is_pressed('b'):  # toggle Face detected    
+            elif keyboard.is_pressed('b'):  # toggle Face detected
                 face_detected_back = True
             elif keyboard.is_pressed('esc'):
-                drone.land()                
+                drone.land()
                 break
 
             # set commands based on PID output
-            if control_on and (pdrone_cc != drone_cc):
+            if control_on and (pdrone_cc != drone_cc):               
                 if drone_cc < 0:
                     drone.clockwise(min([40, (int(drone_cc)*-1)]))
                 else:
@@ -205,12 +264,12 @@ def controller_thread():
             if control_on and (pdrone_fb != drone_fb):
                 if drone_fb < 0:
                     # easily moving backwards requires control output to be magnified
-                    drone.backward(min([40, int(drone_fb)*-1]))
+                    drone.backward(min([60, int(drone_fb)*-1]))
                 else:
                     if(start_hand_landing):
                         drone.forward(min([20, int(drone_fb)]))
                     else:
-                        drone.forward(min([30, int(drone_fb)]))
+                        drone.forward(min([50, int(drone_fb)]))
                 pdrone_fb = drone_fb
 
             if(gesture_take_off):
@@ -218,7 +277,7 @@ def controller_thread():
                 time.sleep(0.2)
                 drone.throw_and_go()
                 took_off = True
-                time.sleep(0.1)
+                time.sleep(0.4)
                 drone.up(20)
                 time.sleep(0.1)
                 drone.backward(20)
@@ -247,21 +306,26 @@ def controller_thread():
                 control_on = True  # disable control
 
             # move right/left finished
-            if(time_out_LR < round(time.time() * 1000) - lr_timeout and  2*time_out_LR > round(time.time() * 1000) - lr_timeout):
-                drone.left(0)
+            if(time_out_LR < round(time.time() * 1000) - lr_timeout and control_on):
+                left_stop_count += 1
+                if(10 < left_stop_count ):
+                    left_stop_count = 0
+                    drone.left(0)
+                
 
             pygame.event.pump()
 
-            roll = 20 * controller.get_axis(0)
-            pitch = 20 * controller.get_axis(1)
-            yaw = 20 * controller.get_axis(3)
-            gaz = 20 * controller.get_axis(2)
-
-            if(1 == controller.get_axis(6)):
+            roll = 90 * controller.get_axis(0)
+            pitch = 90 * controller.get_axis(1)
+            yaw = 120 * controller.get_axis(3)
+            gaz = 120 * controller.get_axis(2)
+            # print(controller.get_axis(6))
+            if(not -1.0 == controller.get_axis(6)):
                 control_on = False
+                # print("control_on is false" )
                 drone.clockwise(yaw)
                 drone.up(gaz)
-                drone.forward(pitch)
+                drone.backward(pitch)
                 drone.right(roll)
 
             else:
@@ -270,10 +334,10 @@ def controller_thread():
             # stdout.write('%s | Axes: ' % controller.get_name())
 
             # for k in range(controller.get_numaxes()):
-            #     stdout.write('%d:%+2.2f ' % (k, controller.get_axis(k)))
+            #      stdout.write('%d:%+2.2f ' % (k, controller.get_axis(k)))
             # stdout.write(' | Buttons: ')
             # for k in range(controller.get_numbuttons()):
-            #     stdout.write('%d:%d ' % (k, controller.get_button(k)))
+            #      stdout.write('%d:%d ' % (k, controller.get_button(k)))
             # stdout.write('\n')
 
     except KeyboardInterrupt as e:
@@ -287,7 +351,8 @@ def controller_thread():
 
 
 def URL_ResponceThread(server_class=HTTPServer, handler_class=GP, port=8088):
-    server_address = ('', port, )
+    time.sleep(15)
+    server_address = ('', port)
     httpd = server_class(server_address, handler_class)
     print('Server running at localhost:8088...')
     httpd.serve_forever()
@@ -297,14 +362,14 @@ def handler(event, sender, data, **args):
     global prev_flight_data
     global current_height, speed, battery, wifi_quality
     global json_to_send
-    global face_detected_front,face_detected_back
+    global face_detected_front, face_detected_back
 
     drone = sender
     if event is drone.EVENT_FLIGHT_DATA:
         if prev_flight_data != str(data):
             mylist = str(data).split(" ")
             mylist = list(filter(None, mylist))
-            current_height = int(mylist[1])
+            current_height = int(mylist[1])+2
             speed = int(mylist[4])
             battery = int(mylist[7])
             wifi_quality = int(mylist[10])
@@ -324,22 +389,25 @@ def handler(event, sender, data, **args):
         print('event="%s" data=%s' % (event.getname(), str(data)))
 
 
-def ShowVideos(overlay_image, debug_image, video):
-
+def ShowVideos(overlay_image, video):
+    global new_frame,new_image_ready
     # im = numpy.array(frame.to_image())
     # im = cv2.resize(im, (960, 720))  # resize frame
     # image = cv2.cvtColor(im, cv2.COLOR_RGB2BGR)
     # show tracking + body recognition
     p1 = (int(bbox[0]), int(bbox[1]))
     p2 = (int(bbox[0] + bbox[2]), int(bbox[1] + bbox[3]))
-    cv2.rectangle(overlay_image, p1, p2, (255, 0, 0), 2, 1)
-    overlay_image = cv2.resize(overlay_image, (960, 720))
+    # cv2.rectangle(overlay_image, p1, p2, (255, 0, 0), 2, 1)
+    # overlay_image = cv2.resize(overlay_image, (960, 720))
+    overlay_image = cv2.flip(overlay_image, 1)
     cv2.imshow('posenet', overlay_image)
+    new_frame = overlay_image
+    new_image_ready = True
 
-    debug_image = cv2.resize(debug_image, (960, 720))
-    cv2.imshow('Tello Gesture Recognition', debug_image)
+    # debug_image = cv2.resize(debug_image, (960, 720))
+    # cv2.imshow('Tello Gesture Recognition', debug_image)
 
-    video.write(overlay_image)
+    # video.write(overlay_image)
 
     cv2.waitKey(1)
 
@@ -390,22 +458,6 @@ def gesture_control(gesture_buffer):
             stopped_lr = False
 
 
-def Stream_Video():
-    global new_image_ready
-    global new_frame
-    # with pyvirtualcam.Camera(width=960, height=720, fps=30) as cam:
-    #     if(new_image_ready):
-    #         #print("write frame ----------------------")
-    #         new_image_ready = False
-    #         im_save = numpy.array(new_frame.to_image())
-    #         im_save = cv2.resize(im_save, (960, 720))
-    #         im_save = cv2.cvtColor(im_save, cv2.COLOR_RGB2BGR)
-    #         out_video_save.write(im_save)
-    #         cam.send(im_save)
-
-    #         # out_stream.write(im_save)
-    #     time.sleep(0.01)
-
 
 def ObjectTracker():
     global tracking_ok, bbox, tracker_initilaized
@@ -436,7 +488,6 @@ def ObjectTracker():
 
 def main():
     global drone
-
     global shutdown
     global gesture_buffer
     global gesture_id
@@ -450,6 +501,7 @@ def main():
     global last_locked_position
     global ready_to_land
     global bbox
+
 
     args_gest = get_args()
     gesture_detector = GestureRecognition(args_gest.use_static_image_mode, args_gest.min_detection_confidence,
@@ -467,9 +519,9 @@ def main():
     drone.start_video()
 
     drone.subscribe(drone.EVENT_FLIGHT_DATA, handler)
-    pid_cc = PID(0.40, 0.10, 0.17, setpoint=0, output_limits=(-100, 100))
+    pid_cc = PID(0.2, 0.03, 0.06, setpoint=0, output_limits=(-100, 100))
     pid_ud = PID(0.3, 0.05, 0.15, setpoint=0, output_limits=(-80, 80))
-    pid_fb = PID(0.4, 0.10, 0.25, setpoint=0, output_limits=(-50, 50))
+    pid_fb = PID(0.5, 0.12, 0.28, setpoint=0, output_limits=(-50, 50))
 
     # video = cv2.VideoWriter('test_out.avi', -1, 1, (320, 240))
     # drone.subscribe(drone.EVENT_VIDEO_FRAME,handler)
@@ -480,23 +532,22 @@ def main():
 
         try:
             # threading.Thread(target=recv_thread).start()
-            threading.Thread(target=controller_thread).start()
-            threading.Thread(target=Stream_Video).start()
+            threading.Thread(target=controller_thread).start()            
             threading.Thread(target=ObjectTracker).start()
             threading.Thread(target=URL_ResponceThread).start()
+            threading.Thread(target=Stream_Video).start()
 
             container = av.open(drone.get_video_stream())
             frame_count = 0
             while not shutdown:
                 for frame in container.decode(video=0):
                     frame_count = frame_count + 1
-                    new_frame = frame
-                    new_image_ready = True
+                    
 
                     # skip first 100 frames
                     if frame_count < 200:
                         continue
-                    if frame_count % 8 == 0:
+                    if frame_count % 4 == 0:
                         im = numpy.array(frame.to_image())
                         im = cv2.resize(im, (320, 240))  # resize frame
                         image = cv2.cvtColor(im, cv2.COLOR_RGB2BGR)
@@ -518,26 +569,41 @@ def main():
                             min_pose_score=0.5)
 
                         keypoint_coords *= output_scale
-
-                        # TODO this isn't particularly fast, use GL for drawing and display someday...
-                        overlay_image = posenet.draw_skel_and_kp(
-                            display_image, pose_scores, keypoint_scores, keypoint_coords,
-                            min_pose_score=0.15, min_part_score=0.1)
-
-                        drone_cc, drone_ud, drone_fb, control_on, last_locked_position, ready_to_land, bbox = CalculateControl(
-                            control_on, keypoint_scores, keypoint_coords, pid_cc, pid_ud, pid_fb, overlay_image, start_hand_landing, desiredHeight)
-                        image_for_gesture = cv2.cvtColor(numpy.array(frame.to_image()), cv2.COLOR_RGB2BGR)
-                        debug_image, gesture_id = gesture_detector.recognize( image_for_gesture, number, mode)
+                        
+                        image_for_gesture = cv2.cvtColor(
+                            numpy.array(frame.to_image()), cv2.COLOR_RGB2BGR)
+                        debug_image, gesture_id = gesture_detector.recognize(
+                            image_for_gesture, number,mode)
                         gesture_buffer.add_gesture(gesture_id)
                         gesture_control(gesture_buffer)
-                        ShowVideos(overlay_image, debug_image, out_video_save)
+                        debug_image = cv2.flip(debug_image, 1)
+                        # TODO this isn't particularly fast, use GL for drawing and display someday...
+                        # display_image = numpy.array(frame.to_image())
+                        # display_image = cv2.cvtColor(display_image, cv2.COLOR_RGB2BGR)
+                        debug_image = posenet.draw_skel_and_kp(
+                            debug_image, pose_scores, keypoint_scores, keypoint_coords,
+                            min_pose_score=0.15, min_part_score=0.1)
+                        
+                        # cv2.imshow('before control', overlay_image)
+                        
+                        drone_cc, drone_ud, drone_fb, control_on, last_locked_position, ready_to_land, bbox = CalculateControl(
+                            control_on, keypoint_scores, keypoint_coords, pid_cc, pid_ud, pid_fb, debug_image, start_hand_landing, desiredHeight)
+                        
+                        
+                        # cv2.imshow('after control', overlay_image)
+                        
+                        
+                        ShowVideos(debug_image, out_video_save)
 
         except KeyboardInterrupt as e:
             print(e)
+
         except Exception as e:
             exc_type, exc_value, exc_traceback = sys.exc_info()
             traceback.print_exception(exc_type, exc_value, exc_traceback)
+
             print(e)
+
 
     cv2.destroyAllWindows()
     out_video_save.release()
