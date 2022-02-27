@@ -314,24 +314,24 @@ def controller_thread():
                     left_stop_count = 0
                     drone.left(0)
                 
+            if(took_off):
+                pygame.event.pump()
 
-            pygame.event.pump()
+                roll = 90 * controller.get_axis(0)
+                pitch = 90 * controller.get_axis(1)
+                yaw = 120 * controller.get_axis(3)
+                gaz = 120 * controller.get_axis(2)
+                # print(controller.get_axis(6))
+                if(not -1.0 == controller.get_axis(6)):
+                    control_on = False
+                    # print("control_on is false" )
+                    drone.clockwise(yaw)
+                    drone.up(gaz)
+                    drone.backward(pitch)
+                    drone.right(roll)
 
-            roll = 90 * controller.get_axis(0)
-            pitch = 90 * controller.get_axis(1)
-            yaw = 120 * controller.get_axis(3)
-            gaz = 120 * controller.get_axis(2)
-            # print(controller.get_axis(6))
-            if(not -1.0 == controller.get_axis(6)):
-                control_on = False
-                # print("control_on is false" )
-                drone.clockwise(yaw)
-                drone.up(gaz)
-                drone.backward(pitch)
-                drone.right(roll)
-
-            else:
-                control_on = True
+                else:
+                    control_on = True
 
             # stdout.write('%s | Axes: ' % controller.get_name())
 
