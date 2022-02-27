@@ -1,13 +1,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 from pygame.locals import *
-import posenet
-import argparse
 
-
-from utils import CvFpsCalc
-
-from gestures import *
 
 
 import time
@@ -22,8 +16,7 @@ import numpy
 import av
 import threading
 import traceback
-from simple_pid import PID
-import tensorflow.compat.v1 as tf
+
 
 
 import json
@@ -52,7 +45,6 @@ pygame.joystick.init()
 controller = pygame.joystick.Joystick(0)
 controller.init()
 
-tf.disable_v2_behavior()
 
 
 prev_flight_data = None

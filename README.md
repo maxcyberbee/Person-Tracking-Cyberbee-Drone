@@ -173,3 +173,12 @@ Module for FPS measurement.
 ### run for video streaming
     sudo apt install v4l2loopback-dkms
     sudo modprobe v4l2loopback devices=1
+
+
+
+
+
+sudo add-apt-repository ppa:jonathonf/ffmpeg-4
+sudo apt upgrade
+sudo apt install libavcodec-dev
+sudo apt-get install python3-dev
