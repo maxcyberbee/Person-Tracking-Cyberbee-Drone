@@ -329,7 +329,7 @@ def main():
                 im = numpy.array(frame.to_image())
                 image = cv2.cvtColor(im, cv2.COLOR_RGB2BGR)
 
-                # cv2.imshow('after control', overlay_image)
+                cv2.imshow('after control', image)
 
                 ShowVideos(image)
 
