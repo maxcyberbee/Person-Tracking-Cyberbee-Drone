@@ -222,6 +222,13 @@ def controller_thread():
                 pitch = 90 * controller.get_axis(1)
                 yaw = 120 * controller.get_axis(3)
                 gaz = 120 * controller.get_axis(2)
+                
+                # #grey frsky
+                # roll = 90 * controller.get_axis(3)
+                # pitch = 90 * controller.get_axis(2)
+                # yaw = 120 * controller.get_axis(1)
+                # gaz = 120 * controller.get_axis(0)
+                
                 # print(controller.get_axis(6))
 
                 # print("control_on is false" )

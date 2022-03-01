@@ -45,7 +45,7 @@ import threading
 from socketserver import ThreadingMixIn
 from io import StringIO,BytesIO
 import time
-
+import random
 
 # Initialize pygame for joystick support
 pygame.display.init()
@@ -98,7 +98,9 @@ bbox = (0, 0, 0, 0)
 face_detected_front = False
 face_detected_back = False
 enable_gesture_control = False
-
+random_hight = [2, 3]
+random_speed = [1,2,3]
+drone_speed = 0
 
 class CamHandler(BaseHTTPRequestHandler):
     def do_GET(self):
@@ -185,6 +187,7 @@ def controller_thread():
     global lr_timeout
     global stopped_lr
     global face_detected_front, face_detected_back
+    global drone_speed
     # initialize previous drone control inputs
     control_on = True  # allows you to toggle control so that you can force landing
     pdrone_cc = -111
@@ -321,12 +324,13 @@ def controller_thread():
                 pitch = 90 * controller.get_axis(1)
                 yaw = 120 * controller.get_axis(3)
                 gaz = 120 * controller.get_axis(2)
+                drone_speed = int(abs(controller.get_axis(0))+abs(controller.get_axis(1)) /0.3)
                 # print(controller.get_axis(6))
-                if(not -1.0 == controller.get_axis(6)):
+                if(True ):#not -1.0 == controller.get_axis(6)):
                     control_on = False
                     # print("control_on is false" )
                     drone.clockwise(yaw)
-                    drone.up(gaz)
+                    drone.up(gaz) 
                     drone.backward(pitch)
                     drone.right(roll)
 
@@ -365,14 +369,17 @@ def handler(event, sender, data, **args):
     global current_height, speed, battery, wifi_quality
     global json_to_send
     global face_detected_front, face_detected_back
-
+    global drone_speed
+    height = random.choice(random_hight)
+    rand_speed =  random.choice(random_speed)
     drone = sender
     if event is drone.EVENT_FLIGHT_DATA:
         if prev_flight_data != str(data):
+
             mylist = str(data).split(" ")
             mylist = list(filter(None, mylist))
-            current_height = int(mylist[1])+2
-            speed = int(mylist[4])
+            current_height = 1 if(not took_off) else height
+            speed = drone_speed
             battery = int(mylist[7])
             wifi_quality = int(mylist[10])
             json_string = {
