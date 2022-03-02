@@ -196,7 +196,7 @@ def controller_thread():
             time.sleep(.03)
             # takeoff
             if keyboard.is_pressed('space'):
-                drone.throw_and_go()
+                drone.takeoff()
                 #time.sleep(0.4)
                 took_off = True
                 time.sleep(1)
@@ -397,7 +397,7 @@ def ShowVideos(overlay_image):
     global new_frame,new_image_ready
     # im = numpy.array(frame.to_image())
     # im = cv2.resize(im, (960, 720))  # resize frame
-    # image = cv2.cvtColor(im, cv2.COLOR_RGB2BGR)
+    overlay_image = cv2.cvtColor(overlay_image, cv2.COLOR_RGB2BGR)
     # show tracking + body recognition
     p1 = (int(bbox[0]), int(bbox[1]))
     p2 = (int(bbox[0] + bbox[2]), int(bbox[1] + bbox[3]))
@@ -541,7 +541,7 @@ def main():
                     # skip first 100 frames
                     if frame_count < 200:
                         continue
-                    if frame_count % 4 == 0:
+                    if frame_count % 6 == 0:
                         im = numpy.array(frame.to_image())
                        
                         # TODO this isn't particularly fast, use GL for drawing and display someday...
